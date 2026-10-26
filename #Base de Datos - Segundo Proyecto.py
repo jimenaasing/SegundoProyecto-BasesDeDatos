@@ -13,6 +13,8 @@ try:
     from tkcalendar import DateEntry
 except ImportError:
     DateEntry = None
+from contextlib import contextmanager
+
 
 COLORES = {
     "disponible": "#2e9e4f",   # verde
@@ -89,6 +91,16 @@ class AppCine(ctk.CTk):
         self.crear_area_principal()
 
 #------------------------ INFRAESTRUCTURA ------------------------
+    @contextmanager
+    def conexion(self):
+        conn = psycopg2.connect(**self.conn_params)
+        try:
+            with conn:                      # commit si todo sale bien, rollback si hay error
+                with conn.cursor() as cur:
+                    yield cur
+        finally:
+            conn.close()
+
 
 #--------- Esto devuelve None cuando hay error de BD ---------
     def normalizar_rol(self, rol_bd):
@@ -1204,15 +1216,20 @@ class AppCine(ctk.CTk):
             self.ent_r_motivo.delete(0, "end")
 
     def tab_auditoria(self, t):
-            caja = ctk.CTkTextbox(t, font=("Consolas", 13), state="disabled")
-            caja.pack(fill="both", expand=True, padx=10, pady=10)
-            lineas = [f'{r["momento"]:%Y-%m-%d %H:%M:%S} · {r["usuario"]} ({r["rol"]}) · '
-                    f'{r["ip"]} · {r["accion"]} · {r["detalle"]}'
-                    for r in reversed(self.audit_sim)]
-            self.llenar_textbox(caja, "\n".join(lineas) or "(sin operaciones registradas)")
-            ctk.CTkButton(t, text="Actualizar",
-                        command=lambda: self.recargar_admin("Auditoría")).pack(pady=5)
-
+        caja = ctk.CTkTextbox(t, font=("Consolas", 13), state="disabled")
+        caja.pack(fill="both", expand=True, padx=10, pady=10)
+        filas = self.consultar(
+            "SELECT a.fecha_hora, u.email, r.nombre, a.direccion_ip, a.accion, a.detalle "
+            "FROM admin_operacion_audit a "
+            "JOIN usuario u ON u.usuario_id = a.usuario_id "
+            "JOIN rol r ON r.rol_id = u.rol_id "
+            "ORDER BY a.fecha_hora DESC LIMIT 200") or []
+        lineas = [f"{f:%Y-%m-%d %H:%M:%S} · {email} ({self.normalizar_rol(rol)}) · "
+                  f"{ip or '-'} · {accion} · {detalle}"
+                  for f, email, rol, ip, accion, detalle in filas]
+        self.llenar_textbox(caja, "\n".join(lineas) or "(sin operaciones registradas)")
+        ctk.CTkButton(t, text="Actualizar",
+                      command=lambda: self.recargar_admin("Auditoría")).pack(pady=5)
     #------------------
     def estado_boleto(self, b):
             if b.get("reembolsado"):
@@ -1336,15 +1353,14 @@ class AppCineConBD(AppCine):
 
     def consultar(self, sql, params=None):
         try:
-            with psycopg2.connect(**self.conn_params) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(sql, params)
-                    return cur.fetchall()
+             with self.conexion() as cur:
+                cur.execute(sql, params)
+                return cur.fetchall()
         except psycopg2.Error as error:
             self._ultimo_error_bd = True
-            messagebox.showerror("PostgreSQL", f"No se pudo consultar la base de datos:\\n{error}")
+            messagebox.showerror("PostgreSQL", f"No se pudo consultar la base de datos:\n{error}")
             return None
-
+        
     def cargar_funciones(self):
         filas = self.consultar("""
             SELECT f.funcion_id, p.titulo, p.sinopsis, p.clasificacion,
@@ -1755,17 +1771,39 @@ class AppCineConBD(AppCine):
             return
         super().construir_checkin()
 
-    def registrar_auditoria(self,accion,detalle):
-        # Los scripts aportados aún no contienen admin_operacion_audit.
-        self.audit_sim.append({'momento':datetime.now(),
-            'usuario':self.usuario_actual['usuario'] if self.usuario_actual else 'sin sesión',
-            'rol':self.rol_actual(), 'ip':'127.0.0.1','accion':accion,'detalle':detalle})
+    def registrar_auditoria(self, accion, detalle, cur=None):
+        sql = ("INSERT INTO admin_operacion_audit (usuario_id, accion, detalle, direccion_ip) "
+               "VALUES (%s, %s, %s, inet_client_addr())")
+        datos = (self.usuario_actual["usuario_id"], accion[:50], detalle)
+        if cur is not None:              # misma transacción que la operación (lo ideal)
+            cur.execute(sql, datos)
+            return
+        with self.conexion() as c:
+            c.execute(sql, datos)
+
+
 
     def abrir_admin(self):
-        # No presentar formularios simulados como si actualizaran PostgreSQL.
-        messagebox.showinfo('Administración pendiente',
-          'Este módulo aún requiere integración SQL y tablas de auditoría.\\n'
-          'La cartelera, compras y boletos son los componentes conectados en esta versión.')
+        if not self.tiene_acceso("admin"):
+            messagebox.showwarning("Permisos", "No tienes permiso para esta pantalla.")
+            return
+        conectadas = {"Auditoría": self.tab_auditoria}   # agrega aquí cada pestaña que conectes
+        tabs = [n for n in TABS_ADMIN[self.rol_actual()] if n in conectadas]
+        if not tabs:
+            messagebox.showinfo("Administración",
+                                "Tus secciones aún no están conectadas a la base de datos.")
+            return
+        f = self.pantallas["admin"]
+        for w in f.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(f, text="Panel de administración", font=("Arial", 22, "bold")).pack(pady=10)
+        self.tabs = ctk.CTkTabview(f)
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
+        for nombre in tabs:
+            self.tabs.add(nombre)
+            conectadas[nombre](self.tabs.tab(nombre))
+        self.mostrar_pantalla("admin")
+        
 
     def cerrar_sesion(self):
         if self._orden_pendiente is not None:self.liberar_asientos()
