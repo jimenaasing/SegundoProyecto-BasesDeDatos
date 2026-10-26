@@ -1,9 +1,12 @@
 -------------------- Usarios --------------------
-INSERT INTO rol (nombre) VALUES ('CLIENTE');
-INSERT INTO rol (nombre) VALUES ('TAQUILLERO');
-INSERT INTO rol (nombre) VALUES ('OPERADOR_PUERTA');
-INSERT INTO rol (nombre) VALUES ('CONTADOR');
-INSERT INTO rol (nombre) VALUES ('ADMIN');
+-- Cambio: ahora en lugar de solo nombre ahora queda el id del rol fijo para evitar que se siga incrementando
+INSERT INTO rol (rol_id, nombre) VALUES (1, 'CLIENTE');
+INSERT INTO rol (rol_id, nombre) VALUES (2, 'TAQUILLERO');
+INSERT INTO rol (rol_id, nombre) VALUES (3, 'OPERADOR_PUERTA');
+INSERT INTO rol (rol_id, nombre) VALUES (4, 'CONTADOR');
+INSERT INTO rol (rol_id, nombre) VALUES (5, 'ADMIN');
+-- Cambio: Alinea el contador de ids con el ultimo id escrito a mano
+SELECT setval('rol_rol_id_seq', 5);
 
 INSERT INTO usuario (rol_id, nombre, email, password_hash) VALUES (1, 'Anton Ego', 'ego.critic@michelin.fr', 'hash_de_prueba');
 INSERT INTO usuario (rol_id, nombre, email, password_hash) VALUES (1, 'Sonia Mora', 'smora@tec.cr', 'hash_de_prueba');
@@ -16,10 +19,13 @@ INSERT INTO usuario (rol_id, nombre, email, password_hash) VALUES (5, 'Vassago G
 
 INSERT INTO cine (nombre, ciudad, direccion) VALUES ('IMAX Chepe Centro', 'San Jose', 'A 300 metros de la soda ta bueno');
 INSERT INTO cine (nombre, ciudad, direccion) VALUES ('IMAX Paseo Metropoli', 'Cartago', 'A 1km del cementerio, como yendo para san jose');
-INSERT INTO zona (nombre) VALUES ('PLATEA'); -- valor 1
-INSERT INTO zona (nombre) VALUES ('PALCO');  -- valor 2
-INSERT INTO zona (nombre) VALUES ('VIP');    -- valor 3
-INSERT INTO zona (nombre) VALUES ('GENERAL');-- valor 4
+-- Cambio: ahora en lugar de solo nombre ahora queda el id del rol fijo para evitar que se siga incrementando
+INSERT INTO zona (zona_id, nombre) VALUES (1, 'PLATEA');
+INSERT INTO zona (zona_id, nombre) VALUES (2, 'PALCO');
+INSERT INTO zona (zona_id, nombre) VALUES (3, 'VIP');
+INSERT INTO zona (zona_id, nombre) VALUES (4, 'GENERAL');
+-- Cambio: Alinea el contador de ids con el ultimo id escrito a mano
+SELECT setval('zona_zona_id_seq', 4);
 
 INSERT INTO sala (cine_id, nombre, capacidad) VALUES (1, 'Sala IMAX 1', 84);
 INSERT INTO sala (cine_id, nombre, capacidad) VALUES (1, 'Sala IMAX 2', 84);
@@ -64,7 +70,6 @@ BEGIN
 END $$;
 
 -- -------------------- Peliculas --------------------
-
 INSERT INTO genero (nombre) VALUES ('Niños');
 INSERT INTO genero (nombre) VALUES ('Animado');
 INSERT INTO genero (nombre) VALUES ('Aventura');
@@ -97,7 +102,6 @@ VALUES ('Shrek 25 Aniversario',
 'TP', 91, 'posters/eshereck.png');
 
 --------------------- Generos --------------------
-
 INSERT INTO pelicula_genero (pelicula_id, genero_id) VALUES (1, 2);
 INSERT INTO pelicula_genero (pelicula_id, genero_id) VALUES (1, 3);
 INSERT INTO pelicula_genero (pelicula_id, genero_id) VALUES (1, 4);
@@ -125,14 +129,15 @@ INSERT INTO funcion (pelicula_id, sala_id, inicio, fin)
 VALUES (5, 2, now() + interval '1 hour', now() + interval '3 hours 15 minutes');
 
 --------------------- Entradas ------------------
-
-INSERT INTO tipo_entrada (nombre) VALUES ('Adulto');
-INSERT INTO tipo_entrada (nombre) VALUES ('Niño');
-INSERT INTO tipo_entrada (nombre) VALUES ('Tercera edad');
-INSERT INTO tipo_entrada (nombre) VALUES ('Estudiante');
+-- Cambio: ahora en lugar de solo nombre ahora queda el id del rol fijo para evitar que se siga incrementando
+INSERT INTO tipo_entrada (tipo_entrada_id, nombre) VALUES (1, 'Adulto');
+INSERT INTO tipo_entrada (tipo_entrada_id, nombre) VALUES (2, 'Niño');
+INSERT INTO tipo_entrada (tipo_entrada_id, nombre) VALUES (3, 'Tercera edad');
+INSERT INTO tipo_entrada (tipo_entrada_id, nombre) VALUES (4, 'Estudiante');
+-- Cambio: Alinea el contador de ids con el ultimo id escrito a mano
+SELECT setval('tipo_entrada_tipo_entrada_id_seq', 4);
 
 ---------------------- Tarifas --------------------
-
 -- se calcula con la combinacion de los datos de la tabla de info tarifas
 DO $$
 DECLARE
@@ -191,6 +196,6 @@ INSERT INTO promocion (nombre, tipo, dia_semana) VALUES ('2x1 de viernes', '2X1'
 
 INSERT INTO metodo_pago (nombre) VALUES ('Tarjeta de crédito');
 INSERT INTO metodo_pago (nombre) VALUES ('Tarjeta de débito');
-INSERT INTO metodo_pago (nombre) VALUES ('Sinpe');
+INSERT INTO metodo_pago (nombre) VALUES ('PayPal');
 INSERT INTO metodo_pago (nombre) VALUES ('Billetera digital');
 INSERT INTO metodo_pago (nombre) VALUES ('Transferencia');
