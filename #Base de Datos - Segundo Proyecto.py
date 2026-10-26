@@ -260,9 +260,26 @@ class AppCine(ctk.CTk):
         ctk.CTkLabel(f, text=f'{fn["titulo"]} · {fn["sala"]} · {fn["hora"]}',
                     font=("Arial", 20, "bold")).pack(pady=10)
         ctk.CTkLabel(f, text="PANTALLA", fg_color="#444444", width=500).pack(pady=5)
+        # Contenedor central para la pantalla y los asientos
+        zona_cine = ctk.CTkFrame(f, fg_color="transparent")
+        zona_cine.pack(fill="both", expand=True, padx=15, pady=10)
 
-        malla = ctk.CTkFrame(f)
-        malla.pack(pady=10)
+        # Pantalla del cine
+        pantalla = ctk.CTkLabel(
+            zona_cine,
+            text="PANTALLA",
+            width=650,
+            height=35,
+            fg_color="#555555",
+            text_color="white",
+            corner_radius=12,  
+            font=("Arial", 16, "bold")
+        )
+        pantalla.pack(pady=(15, 25))
+
+        # Matriz de asientos centrada
+        malla = ctk.CTkFrame(zona_cine, fg_color="transparent")
+        malla.pack(anchor="center", pady=10)
         estados = self.cargar_estados_asientos(fn["id"])
         self.botones_asientos = {}
         for r in range(fn["filas"]):
@@ -1457,32 +1474,64 @@ class AppCineConBD(AppCine):
 
     def construir_mapa_asientos(self):
         marco = self.pantallas['asientos']
-        for w in marco.winfo_children(): w.destroy()
+        for w in marco.winfo_children():
+            w.destroy()
         fn = self.funcion_elegida
-        ctk.CTkLabel(marco, text=f"{fn['titulo']} · {fn['sala']} · {fn['hora']}",
-                     font=('Arial',20,'bold')).pack(pady=10)
+        ctk.CTkLabel(
+            marco, text=f"{fn['titulo']} · {fn['sala']} · {fn['hora']}",
+            font=('Arial', 20, 'bold')
+        ).pack(pady=(12, 6))
+        zona_desplazable = ctk.CTkScrollableFrame(marco)
+        zona_desplazable.pack(fill='both', expand=True, padx=12, pady=6)
+        zona_desplazable.grid_columnconfigure(0, weight=1)
+        contenido = ctk.CTkFrame(zona_desplazable, fg_color='transparent')
+        contenido.grid(row=0, column=0, pady=(15, 20))  # Sin sticky: centrado
+        ctk.CTkLabel(
+            contenido, text='PANTALLA', width=700, height=38,
+            fg_color='#50545b', text_color='white', corner_radius=10,
+            font=('Arial', 16, 'bold')
+        ).pack(pady=(0, 25))
+        malla = ctk.CTkFrame(contenido, fg_color='transparent')
+        malla.pack(pady=(0, 12))
         estados = self.cargar_estados_asientos(fn['id'])
-        malla = ctk.CTkScrollableFrame(marco, width=900, height=400)
-        malla.pack(fill='both', expand=True, padx=10,pady=5)
         self.botones_asientos = {}
         filas = sorted({''.join(c for c in codigo if not c.isdigit()) for codigo in estados})
         for codigo, estado in estados.items():
             fila = ''.join(c for c in codigo if not c.isdigit())
             numero = int(codigo[len(fila):])
-            b = ctk.CTkButton(malla, text=codigo, width=49, height=32,
-                 fg_color=COLORES[estado], hover=False,
-                 command=lambda x=codigo: self.click_asiento(x))
-            b.grid(row=filas.index(fila),column=numero-1,padx=2,pady=2)
-            if estado != 'disponible': b.configure(state='disabled')
-            self.botones_asientos[codigo] = b
+            boton = ctk.CTkButton(
+                malla, text=codigo, width=49, height=32,
+                fg_color=COLORES[estado], hover=False,
+                command=lambda x=codigo: self.click_asiento(x)
+            )
+            boton.grid(row=filas.index(fila), column=numero-1, padx=2, pady=2)
+            if estado != 'disponible':
+                boton.configure(state='disabled')
+            self.botones_asientos[codigo] = boton
         if not estados:
-            ctk.CTkLabel(malla, text='Esta sala no tiene asientos registrados en PostgreSQL.').pack()
-        self.lbl_resumen = ctk.CTkLabel(marco,text='Asientos: ninguno')
+            ctk.CTkLabel(
+                contenido, text='Esta sala no tiene asientos registrados en PostgreSQL.'
+            ).pack(pady=10)
+            
+        leyenda = ctk.CTkFrame(contenido, fg_color='transparent')
+        leyenda.pack(pady=(12, 0))
+        for nombre, color in COLORES.items():
+            ctk.CTkLabel(
+                leyenda, text=f'  {nombre.capitalize()}  ',
+                fg_color=color, text_color='white', corner_radius=6
+            ).pack(side='left', padx=4)
+
+        self.lbl_resumen = ctk.CTkLabel(marco, text='Asientos: ninguno')
         self.lbl_resumen.pack(pady=5)
         botones = ctk.CTkFrame(marco)
-        botones.pack(pady=6)
-        ctk.CTkButton(botones,text='Volver',command=lambda:self.mostrar_pantalla('cartelera')).pack(side='left',padx=5)
-        ctk.CTkButton(botones,text='Continuar',command=self.continuar_a_tarifas).pack(side='left',padx=5)
+        botones.pack(pady=(0, 10))
+        ctk.CTkButton(
+            botones, text='Volver',
+            command=lambda: self.mostrar_pantalla('cartelera')
+        ).pack(side='left', padx=5)
+        ctk.CTkButton(
+            botones, text='Continuar', command=self.continuar_a_tarifas
+        ).pack(side='left', padx=5)
 
     def continuar_a_tarifas(self):
         if not self.asientos_elegidos:
