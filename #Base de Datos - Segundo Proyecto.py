@@ -20,7 +20,7 @@ COLORES = {
     "bloqueado": "#e0b400",    # amarillo
     "seleccionado": "#2f6fdb", # azul
 }
-COLUMNAS_CARTELERA = 3  # tarjetas por fila
+COLUMNAS_CARTELERA = 5  # tarjetas por fila
 MAX_ASIENTOS = 6  # RN-04
 ROLES_COMPRADORES = ("Cliente", "Taquillero")
 METODOS_PAGO = ["Tarjeta de crédito", "Tarjeta de débito", "PayPal",
@@ -91,6 +91,17 @@ class AppCine(ctk.CTk):
 #------------------------ INFRAESTRUCTURA ------------------------
 
 #--------- Esto devuelve None cuando hay error de BD ---------
+    def normalizar_rol(self, rol_bd):
+        equivalencias = {
+            "CLIENTE": "Cliente",
+            "TAQUILLERO": "Taquillero",
+            "OPERADOR_PUERTA": "Operador de Sala",
+            "CONTADOR": "Contador",
+            "ADMIN": "Administrador"
+        }
+
+        return equivalencias.get(rol_bd, rol_bd)
+
     def consultar(self, sql, params=None):
         conn = None
         try:
@@ -190,7 +201,11 @@ class AppCine(ctk.CTk):
     def refrescar_cartelera(self):
         for w in self.lista.winfo_children():
             w.destroy()
-        for c in range(COLUMNAS_CARTELERA):
+        ancho = self.lista.winfo_width()
+        #Aproximadamente 260 píxeles por tarjeta
+        columnas = max(1, ancho // 260)
+
+        for c in range(columnas):
             self.lista.grid_columnconfigure(c, weight=1, uniform="tarjeta")
 
         ub, gen = self.cb_ubicacion.get(), self.cb_genero.get()
@@ -205,11 +220,11 @@ class AppCine(ctk.CTk):
 
         if not funciones:
             ctk.CTkLabel(self.lista, text="No hay funciones con esos filtros.").grid(
-                row=0, column=0, columnspan=COLUMNAS_CARTELERA, pady=20)
+                row=0, column=0, columnspan=columnas, pady=20)
             return
 
         for i, fn in enumerate(funciones):
-            fila, col = divmod(i, COLUMNAS_CARTELERA)
+            fila, col = divmod(i, columnas)
             tarjeta = ctk.CTkFrame(self.lista, corner_radius=10, border_width=1)
             tarjeta.grid(row=fila, column=col, padx=10, pady=10, sticky="nsew")
 
@@ -748,19 +763,35 @@ class AppCine(ctk.CTk):
         return clave in MENU_POR_ROL[self.rol_actual()]
 
     def autenticar(self, email, clave):
-        # La verificación del hash la hace PostgreSQL; la contraseña nunca se compara en Python
         filas = self.consultar(
             "SELECT u.usuario_id, u.nombre, r.nombre "
             "FROM usuario u JOIN rol r ON r.rol_id = u.rol_id "
             "WHERE lower(u.email) = lower(%s) AND u.activo "
-            "AND u.password_hash = crypt(%s, u.password_hash)",
+            "AND u.password_hash = %s",
             (email, clave))
         if filas is None:
             return "ERROR"          # falló la BD, no es contraseña incorrecta
         if not filas:
             return None
         uid, nombre, rol = filas[0]
-        return {"usuario_id": uid, "usuario": email.lower(), "nombre": nombre, "rol": rol}
+
+        equivalencias = {
+                    "CLIENTE": "Cliente",
+                    "TAQUILLERO": "Taquillero",
+                    "OPERADOR_PUERTA": "Operador de Sala",
+                    "CONTADOR": "Contador",
+                    "ADMIN": "Administrador"
+                }
+
+        rol = equivalencias.get(rol, rol)
+
+        return {
+            "usuario_id": uid,
+            "usuario": email.lower(),
+            "nombre": nombre,
+            "rol": rol
+        }
+
 
     def actualizar_menu(self):
         for w in self.menu.winfo_children():
@@ -1279,6 +1310,11 @@ class AppCineConBD(AppCine):
         self._funciones_cache = []
         self._ultimo_error_bd = False
         super().__init__()
+        # Actualizar la distribución cuando cambie el ancho disponible.
+        self._ancho_cartelera_anterior = 0
+        self._redibujado_cartelera_job = None
+        self.lista.bind("<Configure>", self._programar_redibujado_cartelera, add="+")
+        self.after_idle(self._actualizar_cartelera_al_iniciar)
         # El menú necesita un método de cierre de sesión que faltaba.
 
     def consultar(self, sql, params=None):
@@ -1319,10 +1355,40 @@ class AppCineConBD(AppCine):
                 cine=cine, direccion=direccion, filas=0, cols=0))
         self._funciones_cache = resultado
         return resultado
+    def _columnas_disponibles(self):
+            # Al iniciarse la ventana el widget todavía puede reportar ancho=1.
+            ancho = self.lista.winfo_width()
+            if ancho < 350:
+                ancho = max(self.main.winfo_width() - 40, self.winfo_width() - 240)
+            return max(1, min(7, int(ancho // 270)))
+    
+    def _actualizar_cartelera_al_iniciar(self):
+            if self.winfo_exists():
+                self.refrescar_cartelera()
+    
+    def _programar_redibujado_cartelera(self, evento=None):
+            ancho = self.lista.winfo_width()
+            if ancho <= 1 or abs(ancho - self._ancho_cartelera_anterior) < 35:
+                return
+            self._ancho_cartelera_anterior = ancho
+            if self._redibujado_cartelera_job is not None:
+                self.after_cancel(self._redibujado_cartelera_job)
+            self._redibujado_cartelera_job = self.after(180, self._redibujar_cartelera)
+    
+    def _redibujar_cartelera(self):
+            self._redibujado_cartelera_job = None
+            if self.winfo_exists():
+                self.refrescar_cartelera()
+    
 
     def refrescar_cartelera(self):
         for w in self.lista.winfo_children():
             w.destroy()
+        columnas = self._columnas_disponibles()
+        #No dejar columnas de configuraciones previas con peso extra.
+        for c in range(8):
+            self.lista.grid_columnconfigure(c, weight=1 if c < columnas else 0,
+                                            uniform='tarjeta' if c < columnas else '')
         funciones = self.cargar_funciones()
         ubicaciones = ['Todas'] + sorted({f['ubicacion'] for f in funciones})
         generos = ['Todos'] + sorted({g.strip() for f in funciones
@@ -1339,15 +1405,32 @@ class AppCineConBD(AppCine):
             (gen == 'Todos' or gen in [x.strip() for x in f['genero'].split(',')]) and
             (not fecha or f['fecha'].startswith(fecha))]
         if not filtradas:
-            ctk.CTkLabel(self.lista, text='No hay funciones futuras con esos filtros en PostgreSQL.').pack(pady=20)
+            ctk.CTkLabel(self.lista, text='No hay funciones futuras con esos filtros en PostgreSQL.').grid(
+                row=0, column=0, columnspan=columnas, pady=20)
+            return
+
         for i, fn in enumerate(filtradas):
-            tarjeta = ctk.CTkFrame(self.lista, corner_radius=10, border_width=1)
-            tarjeta.grid(row=i // COLUMNAS_CARTELERA, column=i % COLUMNAS_CARTELERA,
-                         padx=10, pady=10, sticky='nsew')
-            for texto in (fn['titulo'], f"Clasificación {fn['clasificacion']} · {fn['genero']}",
-                          fn['sinopsis'], f"{fn['cine']} · {fn['ubicacion']}\\n{fn['direccion']}\\n{fn['sala']} · {fn['fecha']} {fn['hora']}"):
-                ctk.CTkLabel(tarjeta, text=texto, wraplength=240, justify='left').pack(padx=12,pady=5)
-            ctk.CTkButton(tarjeta, text='Elegir', command=lambda x=fn: self.elegir_funcion(x)).pack(padx=12,pady=10)
+                    tarjeta = ctk.CTkFrame(self.lista, corner_radius=10, border_width=1)
+                    tarjeta.grid(row=i // columnas, column=i % columnas,
+                                padx=7, pady=8, sticky='nsew')
+        
+                    ctk.CTkLabel(tarjeta, text=fn['titulo'],
+                                font=('Arial', 14, 'bold'), wraplength=205,
+                                justify='center').pack(padx=10, pady=(12, 5))
+                    ctk.CTkLabel(tarjeta,
+                                text=f"Clasificación {fn['clasificacion']} · {fn['genero']}",
+                                wraplength=205, justify='left').pack(padx=10, pady=4)
+                    sinopsis = (fn['sinopsis'] or '').strip()
+                    if len(sinopsis) > 165:
+                        sinopsis = sinopsis[:162].rsplit(' ', 1)[0] + '...'
+                    ctk.CTkLabel(tarjeta, text=sinopsis, wraplength=205,
+                                justify='left').pack(padx=10, pady=5)
+                    lugar = f"{fn['cine']} · {fn['ubicacion']}\n{fn['direccion']}\n{fn['sala']} · {fn['fecha']} {fn['hora']}"
+                    ctk.CTkLabel(tarjeta, text=lugar, wraplength=205,
+                                justify='left').pack(padx=10, pady=5)
+                    ctk.CTkButton(tarjeta, text='Elegir', width=130,
+                                command=lambda x=fn: self.elegir_funcion(x)).pack(padx=10, pady=(8, 12))
+
 
     def cargar_estados_asientos(self, funcion_id):
         filas = self.consultar("""
