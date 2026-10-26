@@ -17,3 +17,9 @@ WHERE estado = 'PAGADA';
 CREATE INDEX IF NOT EXISTS idx_pago_aprobado_metodo
 ON pago (metodo_pago_id)
 WHERE estado = 'APROBADO';
+
+
+-- Consulta 4: Auditoría de operaciones administrativas
+CREATE INDEX IF NOT EXISTS idx_auditoria_fecha_accion_usuario
+ON public.admin_operacion_audit
+(fecha_hora, accion, usuario_id);
